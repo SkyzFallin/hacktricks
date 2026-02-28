@@ -2,9 +2,13 @@ import json
 import os
 import sys
 import re
+import html
 import logging
 from os import path
 from urllib.request import urlopen, Request
+
+
+URL_TIMEOUT_SECONDS = 8
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -42,8 +46,15 @@ def ref(matchobj):
             pass
         else:
             try:
-                raw_html = str(urlopen(Request(href, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'})).read())
-                match = re.search('<title>(.*?)</title>', raw_html)
+                response = urlopen(
+                    Request(
+                        href,
+                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0'}
+                    ),
+                    timeout=URL_TIMEOUT_SECONDS,
+                )
+                raw_html = response.read().decode('utf-8', errors='ignore')
+                match = re.search(r'<title>(.*?)</title>', raw_html, re.IGNORECASE | re.DOTALL)
                 title = match.group(1) if match else href
             except Exception as e:
                 logger.debug(f'Error opening URL {href}: {e}')
@@ -99,7 +110,9 @@ def ref(matchobj):
     if href.endswith("/README.md"):
         href = href.replace("/README.md", "/index.html")
 
-    template = f"""<a class="content_ref" href="{href}"><span class="content_ref_label">{title}</span></a>"""
+    safe_href = html.escape(href, quote=True)
+    safe_title = html.escape(title)
+    template = f"""<a class="content_ref" href="{safe_href}"><span class="content_ref_label">{safe_title}</span></a>"""
 
     # translate_table = str.maketrans({"\"":"\\\"","\n":"\\n"})
     # translated_text = template.translate(translate_table)
@@ -120,17 +133,20 @@ def files(matchobj):
             if href in files:
                 title = href
                 logger.debug(f'File search result: {os.path.join(root, href)}')
+                break
         
     except Exception as e:
         logger.debug(e)
         logger.error(f'Error searching file: {href}')
         sys.exit(1)
 
-        if title=="":
-            logger.error(f'Error searching file: {href}')
-            sys.exit(1)
+    if title == "":
+        logger.error(f'Error searching file: {href}')
+        sys.exit(1)
 
-    template = f"""<a class="content_ref" href="/files/{href}"><span class="content_ref_label">{title}</span></a>"""
+    safe_href = html.escape(href, quote=True)
+    safe_title = html.escape(title)
+    template = f"""<a class="content_ref" href="/files/{safe_href}"><span class="content_ref_label">{safe_title}</span></a>"""
 
     result = template
 
